@@ -14,6 +14,7 @@ import {
 
 type RibbonTab = "Home" | "Insert" | "Data" | "View";
 type FileState = { path?: string; name: string; extension: string };
+type EditSession = { address: string; initialValue: string };
 
 const INITIAL_SELECTION: Selection = { start: { row: 0, col: 0 }, end: { row: 0, col: 0 } };
 
@@ -31,14 +32,81 @@ function ColorControl({ label, value, icon, onChange }: { label: string; value: 
   return <label className="color-control" title={label} aria-label={label}>{icon}<span className="color-swatch" style={{ background: value }} /><input type="color" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
+function CellEditor({ initialValue, onCommit, onCancel }: { initialValue: string; onCommit: (value: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(initialValue);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const finished = useRef(false);
+  const finish = useCallback(() => {
+    if (finished.current) return;
+    finished.current = true;
+    onCommit(value);
+  }, [onCommit, value]);
+
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+
+  return <input
+    ref={inputRef}
+    className="cell-editor"
+    value={value}
+    aria-label="Edit cell value"
+    onMouseDown={(event) => event.stopPropagation()}
+    onChange={(event) => setValue(event.target.value)}
+    onBlur={finish}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); finish(); }
+      if (event.key === "Escape") { event.preventDefault(); finished.current = true; onCancel(); }
+    }}
+  />;
+}
+
+function FormulaEditor({ address, initialValue, onCommit, onFocusGrid }: { address: string; initialValue: string; onCommit: (address: string, value: string) => void; onFocusGrid: () => void }) {
+  const [value, setValue] = useState(initialValue);
+  const [active, setActive] = useState(false);
+  const finished = useRef(false);
+
+  useEffect(() => { if (!active) setValue(initialValue); }, [initialValue, active]);
+
+  const finish = useCallback(() => {
+    if (finished.current) return;
+    finished.current = true;
+    setActive(false);
+    if (value !== initialValue) onCommit(address, value);
+  }, [address, initialValue, onCommit, value]);
+
+  const cancel = useCallback(() => {
+    finished.current = true;
+    setValue(initialValue);
+    setActive(false);
+    onFocusGrid();
+  }, [initialValue, onFocusGrid]);
+
+  return <>
+    <input
+      aria-label={`Value or formula for ${address}`}
+      value={value}
+      onFocus={() => { finished.current = false; setActive(true); }}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={finish}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") { event.preventDefault(); finish(); onFocusGrid(); }
+        if (event.key === "Escape") { event.preventDefault(); cancel(); }
+      }}
+    />
+    {active && <div className="formula-actions">
+      <button aria-label="Cancel edit" onMouseDown={(event) => event.preventDefault()} onClick={cancel}><X size={16} /></button>
+      <button aria-label="Accept edit" onMouseDown={(event) => event.preventDefault()} onClick={() => { finish(); onFocusGrid(); }}><Check size={16} /></button>
+    </div>}
+  </>;
+}
+
 export default function App() {
   const [workbook, setWorkbook] = useState<WorkbookData>(() => sampleWorkbook());
   const [selection, setSelection] = useState<Selection>(INITIAL_SELECTION);
   const [file, setFile] = useState<FileState>({ name: "Untitled.xlsx", extension: "xlsx" });
   const [dirty, setDirty] = useState(false);
   const [ribbon, setRibbon] = useState<RibbonTab>("Home");
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
+  const [editing, setEditing] = useState<EditSession | null>(null);
   const [dragging, setDragging] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => (localStorage.getItem("gridstone-theme") as "light" | "dark") || "light");
   const [status, setStatus] = useState("Ready");
@@ -78,16 +146,14 @@ export default function App() {
     commit((current) => ({ ...current, sheets: current.sheets.map((sheet) => sheet.id === current.activeSheetId ? updater(sheet) : sheet) }), message);
   }, [commit]);
 
-  const commitEdit = useCallback((address = editing, value = editValue) => {
-    if (!address) return;
+  const commitEdit = useCallback((address: string, value: string) => {
     updateActiveSheet((sheet) => setCellInput(sheet, address, value), `Updated ${address}`);
-    setEditing(null);
+    setEditing((current) => current?.address === address ? null : current);
     setTimeout(() => gridRef.current?.focus(), 0);
-  }, [editing, editValue, updateActiveSheet]);
+  }, [updateActiveSheet]);
 
   const beginEdit = useCallback((address: string, seed?: string) => {
-    setEditing(address);
-    setEditValue(seed ?? String(activeSheet.cells[address]?.raw ?? ""));
+    setEditing({ address, initialValue: seed ?? String(activeSheet.cells[address]?.raw ?? "") });
   }, [activeSheet]);
 
   const undo = useCallback(() => {
@@ -332,7 +398,7 @@ export default function App() {
 
   const recentFiles = useMemo(() => { try { return JSON.parse(localStorage.getItem("gridstone-recent") || "[]") as FileState[]; } catch { return []; } }, [showFileMenu]);
   const currentStyle = selectedCell?.style || {};
-  const formulaValue = editing === selectedAddress ? editValue : String(selectedCell?.raw ?? "");
+  const formulaValue = String(selectedCell?.raw ?? "");
 
   return (
     <div className="app-shell" onMouseUp={() => setDragging(false)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
@@ -417,8 +483,7 @@ export default function App() {
       <section className="formula-row" aria-label="Formula bar">
         <div className="name-box">{selectedAddress}<ChevronDown size={14} /></div>
         <div className="formula-symbol">ƒx</div>
-        <input aria-label={`Value or formula for ${selectedAddress}`} value={formulaValue} onFocus={() => { if (!editing) beginEdit(selectedAddress); }} onChange={(event) => setEditValue(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") commitEdit(); if (event.key === "Escape") setEditing(null); }} onBlur={() => { if (editing === selectedAddress) commitEdit(); }} />
-        {editing && <div className="formula-actions"><button aria-label="Cancel edit" onMouseDown={(event) => event.preventDefault()} onClick={() => setEditing(null)}><X size={16} /></button><button aria-label="Accept edit" onMouseDown={(event) => event.preventDefault()} onClick={() => commitEdit()}><Check size={16} /></button></div>}
+        <FormulaEditor key={selectedAddress} address={selectedAddress} initialValue={formulaValue} onCommit={commitEdit} onFocusGrid={() => gridRef.current?.focus()} />
       </section>
 
       {findOpen && <div className="find-bar" role="search"><Search size={17} /><input autoFocus placeholder="Find in sheet" value={findQuery} onChange={(event) => setFindQuery(event.target.value)} /><span>{findMatches.size} result{findMatches.size === 1 ? "" : "s"}</span><button aria-label="Close find" onClick={() => setFindOpen(false)}><X size={17} /></button></div>}
@@ -439,12 +504,12 @@ export default function App() {
                   className={`grid-cell ${selected ? "selected" : ""} ${active ? "active" : ""} ${findMatches.has(address) ? "find-match" : ""}`}
                   role="gridcell" aria-selected={selected} aria-label={`${address}, ${value || "blank"}`} key={address}
                   style={{ fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor, backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined }}
-                  onMouseDown={(event) => { event.preventDefault(); setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
+                  onMouseDown={(event) => { setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
                   onMouseEnter={() => { if (dragging) setSelection((current) => ({ ...current, end: { row, col } })); }}
                   onDoubleClick={() => beginEdit(address)}
                   title={cell?.note || (typeof cell?.raw === "string" && cell.raw.startsWith("=") ? cell.raw : undefined)}
                 >
-                  {editing === address ? <input className="cell-editor" autoFocus value={editValue} onChange={(event) => setEditValue(event.target.value)} onBlur={() => commitEdit(address)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") commitEdit(address); if (event.key === "Escape") setEditing(null); }} /> : <span>{value}</span>}
+                  {editing?.address === address ? <CellEditor initialValue={editing.initialValue} onCommit={(nextValue) => commitEdit(address, nextValue)} onCancel={() => { setEditing(null); gridRef.current?.focus(); }} /> : <span>{value}</span>}
                 </div>;
               })}
             </div>)}

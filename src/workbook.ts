@@ -42,8 +42,8 @@ export interface WorkbookData {
 export interface CellPoint { row: number; col: number }
 export interface Selection { start: CellPoint; end: CellPoint }
 
-export const DEFAULT_ROWS = 200;
-export const DEFAULT_COLS = 52;
+export const DEFAULT_ROWS = 100;
+export const DEFAULT_COLS = 26;
 
 export function uid(prefix = "id") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
