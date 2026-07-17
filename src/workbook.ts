@@ -16,7 +16,6 @@ export interface CellStyle {
 export interface CellData {
   raw: CellValue;
   style?: CellStyle;
-  note?: string;
 }
 
 export interface SheetData {
@@ -110,7 +109,7 @@ export function setCellInput(sheet: SheetData, address: string, input: string): 
   const cells = { ...sheet.cells };
   const existing = cells[address];
   const raw = input.startsWith("=") ? input : parseLiteral(input);
-  if (raw === null && !existing?.style && !existing?.note) delete cells[address];
+  if (raw === null && !existing?.style) delete cells[address];
   else cells[address] = { ...(existing || {}), raw };
   return { ...sheet, cells };
 }

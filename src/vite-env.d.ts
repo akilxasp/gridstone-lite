@@ -13,7 +13,6 @@ interface Window {
     openFile(): Promise<DesktopFile | null>;
     readPath(path: string): Promise<DesktopFile>;
     saveFile(request: { path?: string; saveAs?: boolean; extension: string; suggestedName: string; data: Uint8Array }): Promise<{ path: string; name: string; extension: string } | null>;
-    print(): Promise<{ success: boolean; failureReason?: string }>;
     onCommand(callback: (command: string, payload?: unknown) => void): () => void;
   };
 }

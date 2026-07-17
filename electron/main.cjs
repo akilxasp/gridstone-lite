@@ -19,8 +19,6 @@ function createMenu() {
       { type: "separator" },
       { label: "Save", accelerator: "CmdOrCtrl+S", click: () => sendCommand("save") },
       { label: "Save As…", accelerator: "CmdOrCtrl+Shift+S", click: () => sendCommand("save-as") },
-      { type: "separator" },
-      { label: "Print…", accelerator: "CmdOrCtrl+P", click: () => sendCommand("print") },
       ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
     ]},
     { label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" }, { type: "separator" }, { label: "Find", accelerator: "CmdOrCtrl+F", click: () => sendCommand("find") }] },
@@ -104,6 +102,3 @@ ipcMain.handle("save-file", async (_event, request) => {
   return { path: filePath, name: path.basename(filePath), extension: path.extname(filePath).slice(1).toLowerCase() };
 });
 
-ipcMain.handle("print-window", async () => {
-  return new Promise((resolve) => mainWindow.webContents.print({ printBackground: true }, (success, failureReason) => resolve({ success, failureReason })));
-});

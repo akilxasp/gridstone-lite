@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownWideNarrow, ArrowUpNarrowWide,
-  BarChart3, Bold, Check, ChevronDown, Copy, DollarSign, Download, FilePlus2,
-  FolderOpen, Italic, Moon, PaintBucket, PanelRight, Percent, Plus, Printer,
+  Bold, Check, ChevronDown, Copy, DollarSign, Download, FilePlus2,
+  FolderOpen, Italic, Moon, PaintBucket, Percent, Plus,
   Redo2, Save, Scissors, Search, Snowflake, Sun, Trash2, Underline, Undo2, X,
 } from "lucide-react";
 import {
@@ -12,7 +12,6 @@ import {
   setCellInput,
 } from "./workbook";
 
-type RibbonTab = "Home" | "Insert" | "Data" | "View";
 type FileState = { path?: string; name: string; extension: string };
 type EditSession = { address: string; initialValue: string };
 
@@ -105,15 +104,12 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>(INITIAL_SELECTION);
   const [file, setFile] = useState<FileState>({ name: "Untitled.xlsx", extension: "xlsx" });
   const [dirty, setDirty] = useState(false);
-  const [ribbon, setRibbon] = useState<RibbonTab>("Home");
   const [editing, setEditing] = useState<EditSession | null>(null);
   const [dragging, setDragging] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => (localStorage.getItem("gridstone-theme") as "light" | "dark") || "light");
   const [status, setStatus] = useState("Ready");
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
-  const [chartOpen, setChartOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [zoom, setZoom] = useState(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,11 +206,6 @@ export default function App() {
       setDirty(false); localStorage.removeItem("gridstone-recovery"); setStatus(`Exported ${anchor.download}`);
     }
     setShowFileMenu(false);
-  }, []);
-
-  const printWorkbook = useCallback(async () => {
-    setStatus("Opening print dialog…");
-    if (window.desktop) await window.desktop.print(); else window.print();
   }, []);
 
   const applyStyle = useCallback((patch: Partial<CellStyle>) => {
@@ -354,10 +345,10 @@ export default function App() {
     if (!window.desktop) return;
     return window.desktop.onCommand((command, payload) => {
       if (command === "new") newWorkbook(); else if (command === "open") void openFile(); else if (command === "save") void saveFile();
-      else if (command === "save-as") void saveFile(true); else if (command === "print") void printWorkbook(); else if (command === "find") setFindOpen(true);
+      else if (command === "save-as") void saveFile(true); else if (command === "find") setFindOpen(true);
       else if (command === "open-path" && typeof payload === "string") void window.desktop?.readPath(payload).then(loadDesktopFile).catch(() => setStatus("Could not open the selected workbook"));
     });
-  }, [newWorkbook, openFile, saveFile, printWorkbook, loadDesktopFile]);
+  }, [newWorkbook, openFile, saveFile, loadDesktopFile]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -366,7 +357,7 @@ export default function App() {
       if (modifier && event.key.toLowerCase() === "o") { event.preventDefault(); void openFile(); }
       if (modifier && event.key.toLowerCase() === "n") { event.preventDefault(); newWorkbook(); }
       if (modifier && event.key.toLowerCase() === "f") { event.preventDefault(); setFindOpen(true); }
-      if (event.key === "Escape") { setFindOpen(false); setChartOpen(false); setShowFileMenu(false); }
+      if (event.key === "Escape") { setFindOpen(false); setShowFileMenu(false); }
     };
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   }, [saveFile, openFile, newWorkbook]);
@@ -388,14 +379,6 @@ export default function App() {
     return { count: selectionAddresses(selection).length, numeric: values.length, sum: values.reduce((a, b) => a + b, 0), average: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0 };
   }, [selection, workbook, activeSheet]);
 
-  const chartData = useMemo(() => {
-    const n = normalizedSelection(selection); const result: { label: string; value: number }[] = [];
-    for (let row = n.start.row; row <= n.end.row; row++) for (let col = n.start.col; col <= n.end.col; col++) {
-      const value = evaluateCell(workbook, activeSheet, addressOf(row, col)); if (typeof value === "number") result.push({ label: addressOf(row, col), value });
-    }
-    return result.slice(0, 30);
-  }, [selection, workbook, activeSheet]);
-
   const recentFiles = useMemo(() => { try { return JSON.parse(localStorage.getItem("gridstone-recent") || "[]") as FileState[]; } catch { return []; } }, [showFileMenu]);
   const currentStyle = selectedCell?.style || {};
   const formulaValue = String(selectedCell?.raw ?? "");
@@ -412,10 +395,6 @@ export default function App() {
           <div><strong>{file.name.replace(/\.[^.]+$/, "")}</strong>{dirty && <span className="dirty-dot" title="Unsaved changes">•</span>}</div>
           <span>{dirty ? "Unsaved changes" : "Saved locally"}</span>
         </div>
-        <div className="title-actions">
-          <button className="share-button" type="button" onClick={() => setStatus("Cloud collaboration can be connected from Settings")}>Share</button>
-          <IconButton label="Open inspector" active={inspectorOpen} onClick={() => setInspectorOpen(!inspectorOpen)}><PanelRight size={18} /></IconButton>
-        </div>
       </header>
 
       <nav className="ribbon-tabs" aria-label="Workbook commands">
@@ -427,57 +406,49 @@ export default function App() {
             <button role="menuitem" onClick={() => void saveFile()}><Save />Save<span>⌘S</span></button>
             <button role="menuitem" onClick={() => void saveFile(true)}><Download />Save as…<span>⇧⌘S</span></button>
             <button role="menuitem" onClick={() => void saveFile(true, "csv")}><Download />Export CSV</button>
-            <button role="menuitem" onClick={() => void printWorkbook()}><Printer />Print / PDF<span>⌘P</span></button>
             {recentFiles.length > 0 && <div className="menu-heading">Recent files</div>}
             {recentFiles.map((item) => <button role="menuitem" key={item.path} onClick={() => void openRecent(item)}><span className="file-badge">{item.extension}</span>{item.name}</button>)}
           </div>}
         </div>
-        {(["Home", "Insert", "Data", "View"] as RibbonTab[]).map((tab) => <button className={`ribbon-tab ${ribbon === tab ? "active" : ""}`} type="button" key={tab} onClick={() => setRibbon(tab)}>{tab}</button>)}
       </nav>
 
-      <section className="toolbar" aria-label={`${ribbon} toolbar`}>
+      <section className="toolbar" aria-label="Toolbar">
         <div className="tool-group compact">
           <IconButton label="Undo" disabled={!undoStack.current.length} onClick={undo}><Undo2 size={18} /></IconButton>
           <IconButton label="Redo" disabled={!redoStack.current.length} onClick={redo}><Redo2 size={18} /></IconButton>
         </div>
-        {ribbon === "Home" && <>
-          <div className="tool-group">
-            <ToolButton label="Paste" icon={<Download size={18} />} onClick={() => void pasteSelection()} />
-            <IconButton label="Cut" onClick={() => void copySelection(true)}><Scissors size={17} /></IconButton>
-            <IconButton label="Copy" onClick={() => void copySelection()}><Copy size={17} /></IconButton>
-          </div>
-          <div className="tool-group">
-            <select aria-label="Font family" defaultValue="Aptos"><option>Aptos</option><option>Georgia</option><option>JetBrains Mono</option></select>
-            <select aria-label="Font size" defaultValue="14"><option>11</option><option>12</option><option>14</option><option>16</option><option>18</option><option>24</option></select>
-            <IconButton label="Bold" active={currentStyle.bold} onClick={() => applyStyle({ bold: !currentStyle.bold })}><Bold size={17} /></IconButton>
-            <IconButton label="Italic" active={currentStyle.italic} onClick={() => applyStyle({ italic: !currentStyle.italic })}><Italic size={17} /></IconButton>
-            <IconButton label="Underline" active={currentStyle.underline} onClick={() => applyStyle({ underline: !currentStyle.underline })}><Underline size={17} /></IconButton>
-            <ColorControl label="Text color" value={currentStyle.textColor || "#17221f"} icon={<span className="text-color-icon">A</span>} onChange={(value) => applyStyle({ textColor: value })} />
-            <ColorControl label="Fill color" value={currentStyle.fillColor || "#ffffff"} icon={<PaintBucket size={17} />} onChange={(value) => applyStyle({ fillColor: value })} />
-          </div>
-          <div className="tool-group compact">
-            <IconButton label="Align left" active={currentStyle.align === "left"} onClick={() => applyStyle({ align: "left" })}><AlignLeft size={17} /></IconButton>
-            <IconButton label="Align center" active={currentStyle.align === "center"} onClick={() => applyStyle({ align: "center" })}><AlignCenter size={17} /></IconButton>
-            <IconButton label="Align right" active={currentStyle.align === "right"} onClick={() => applyStyle({ align: "right" })}><AlignRight size={17} /></IconButton>
-          </div>
-          <div className="tool-group compact">
-            <IconButton label="Currency format" active={currentStyle.format === "currency"} onClick={() => applyStyle({ format: "currency" })}><DollarSign size={17} /></IconButton>
-            <IconButton label="Percent format" active={currentStyle.format === "percent"} onClick={() => applyStyle({ format: "percent" })}><Percent size={17} /></IconButton>
-            <select aria-label="Number format" value={currentStyle.format || "general"} onChange={(event) => applyStyle({ format: event.target.value as CellStyle["format"] })}><option value="general">General</option><option value="number">Number</option><option value="currency">Currency</option><option value="percent">Percent</option><option value="date">Date</option></select>
-          </div>
-        </>}
-        {ribbon === "Insert" && <>
-          <div className="tool-group"><ToolButton label="Chart" icon={<BarChart3 size={19} />} onClick={() => setChartOpen(true)} /><ToolButton label="New sheet" icon={<Plus size={19} />} onClick={addSheet} /></div>
-          <div className="toolbar-hint">Select numeric cells, then insert a chart.</div>
-        </>}
-        {ribbon === "Data" && <>
-          <div className="tool-group"><ToolButton label="Sort A → Z" icon={<ArrowUpNarrowWide size={19} />} onClick={() => sortSelection("asc")} /><ToolButton label="Sort Z → A" icon={<ArrowDownWideNarrow size={19} />} onClick={() => sortSelection("desc")} /><ToolButton label="Remove duplicates" icon={<Trash2 size={19} />} onClick={removeDuplicates} /></div>
-          <div className="toolbar-hint">Data tools apply to the current selection.</div>
-        </>}
-        {ribbon === "View" && <>
-          <div className="tool-group"><ToolButton label="Freeze top row" icon={<Snowflake size={19} />} onClick={() => updateActiveSheet((sheet) => ({ ...sheet, frozenRows: sheet.frozenRows ? 0 : 1 }), "Updated frozen rows")} /><ToolButton label={theme === "light" ? "Dark theme" : "Light theme"} icon={theme === "light" ? <Moon size={19} /> : <Sun size={19} />} onClick={() => setTheme(theme === "light" ? "dark" : "light")} /></div>
+        <div className="tool-group">
+          <ToolButton label="Paste" icon={<Download size={18} />} onClick={() => void pasteSelection()} />
+          <IconButton label="Cut" onClick={() => void copySelection(true)}><Scissors size={17} /></IconButton>
+          <IconButton label="Copy" onClick={() => void copySelection()}><Copy size={17} /></IconButton>
+        </div>
+        <div className="tool-group">
+          <IconButton label="Bold" active={currentStyle.bold} onClick={() => applyStyle({ bold: !currentStyle.bold })}><Bold size={17} /></IconButton>
+          <IconButton label="Italic" active={currentStyle.italic} onClick={() => applyStyle({ italic: !currentStyle.italic })}><Italic size={17} /></IconButton>
+          <IconButton label="Underline" active={currentStyle.underline} onClick={() => applyStyle({ underline: !currentStyle.underline })}><Underline size={17} /></IconButton>
+          <ColorControl label="Text color" value={currentStyle.textColor || "#17221f"} icon={<span className="text-color-icon">A</span>} onChange={(value) => applyStyle({ textColor: value })} />
+          <ColorControl label="Fill color" value={currentStyle.fillColor || "#ffffff"} icon={<PaintBucket size={17} />} onChange={(value) => applyStyle({ fillColor: value })} />
+        </div>
+        <div className="tool-group compact">
+          <IconButton label="Align left" active={currentStyle.align === "left"} onClick={() => applyStyle({ align: "left" })}><AlignLeft size={17} /></IconButton>
+          <IconButton label="Align center" active={currentStyle.align === "center"} onClick={() => applyStyle({ align: "center" })}><AlignCenter size={17} /></IconButton>
+          <IconButton label="Align right" active={currentStyle.align === "right"} onClick={() => applyStyle({ align: "right" })}><AlignRight size={17} /></IconButton>
+        </div>
+        <div className="tool-group compact">
+          <IconButton label="Currency format" active={currentStyle.format === "currency"} onClick={() => applyStyle({ format: "currency" })}><DollarSign size={17} /></IconButton>
+          <IconButton label="Percent format" active={currentStyle.format === "percent"} onClick={() => applyStyle({ format: "percent" })}><Percent size={17} /></IconButton>
+          <select aria-label="Number format" value={currentStyle.format || "general"} onChange={(event) => applyStyle({ format: event.target.value as CellStyle["format"] })}><option value="general">General</option><option value="number">Number</option><option value="currency">Currency</option><option value="percent">Percent</option><option value="date">Date</option></select>
+        </div>
+        <div className="tool-group compact">
+          <IconButton label="Sort ascending" onClick={() => sortSelection("asc")}><ArrowUpNarrowWide size={17} /></IconButton>
+          <IconButton label="Sort descending" onClick={() => sortSelection("desc")}><ArrowDownWideNarrow size={17} /></IconButton>
+          <IconButton label="Remove duplicates" onClick={removeDuplicates}><Trash2 size={17} /></IconButton>
+        </div>
+        <div className="tool-group compact">
+          <IconButton label="Freeze top row" active={Boolean(activeSheet.frozenRows)} onClick={() => updateActiveSheet((sheet) => ({ ...sheet, frozenRows: sheet.frozenRows ? 0 : 1 }), "Updated frozen rows")}><Snowflake size={17} /></IconButton>
+          <IconButton label={theme === "light" ? "Dark theme" : "Light theme"} onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</IconButton>
           <div className="zoom-toolbar"><button onClick={() => setZoom(Math.max(50, zoom - 10))}>−</button><span>{zoom}%</span><button onClick={() => setZoom(Math.min(200, zoom + 10))}>+</button></div>
-        </>}
+        </div>
       </section>
 
       <section className="formula-row" aria-label="Formula bar">
@@ -507,7 +478,7 @@ export default function App() {
                   onMouseDown={(event) => { setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
                   onMouseEnter={() => { if (dragging) setSelection((current) => ({ ...current, end: { row, col } })); }}
                   onDoubleClick={() => beginEdit(address)}
-                  title={cell?.note || (typeof cell?.raw === "string" && cell.raw.startsWith("=") ? cell.raw : undefined)}
+                  title={typeof cell?.raw === "string" && cell.raw.startsWith("=") ? cell.raw : undefined}
                 >
                   {editing?.address === address ? <CellEditor initialValue={editing.initialValue} onCommit={(nextValue) => commitEdit(address, nextValue)} onCancel={() => { setEditing(null); gridRef.current?.focus(); }} /> : <span>{value}</span>}
                 </div>;
@@ -516,13 +487,6 @@ export default function App() {
           </div>
         </div>
 
-        {inspectorOpen && <aside className="inspector" aria-label="Cell inspector">
-          <div className="inspector-heading"><div><span>Cell inspector</span><strong>{selectedAddress}</strong></div><button aria-label="Close inspector" onClick={() => setInspectorOpen(false)}><X size={18} /></button></div>
-          <label>Cell note<textarea value={selectedCell?.note || ""} placeholder="Add context or instructions…" onChange={(event) => { const note = event.target.value; updateActiveSheet((sheet) => ({ ...sheet, cells: { ...sheet.cells, [selectedAddress]: { ...(sheet.cells[selectedAddress] || { raw: null }), note } } }), "Updated note"); }} /></label>
-          <div className="inspector-section"><span>Computed value</span><strong>{displayValue(evaluateCell(workbook, activeSheet, selectedAddress), selectedCell?.style) || "—"}</strong></div>
-          <div className="inspector-section"><span>Raw value</span><code>{String(selectedCell?.raw ?? "—")}</code></div>
-          <button className="danger-button" onClick={clearSelection}><Trash2 size={16} />Clear selected cells</button>
-        </aside>}
       </main>
 
       <footer className="bottom-bar">
@@ -533,12 +497,6 @@ export default function App() {
         <div className="status-message" aria-live="polite">{status}</div>
         <div className="selection-stats"><span>Count <strong>{selectedStats.count}</strong></span>{selectedStats.numeric > 0 && <><span>Average <strong>{selectedStats.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span><span>Sum <strong>{selectedStats.sum.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span></>}</div>
       </footer>
-
-      {chartOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setChartOpen(false)}><section className="modal chart-modal" role="dialog" aria-modal="true" aria-labelledby="chart-title" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="modal-heading"><div><span>Insert</span><h2 id="chart-title">Column chart</h2></div><button aria-label="Close chart" onClick={() => setChartOpen(false)}><X size={20} /></button></div>
-        {chartData.length ? <div className="chart-area" aria-label="Preview of selected data">{chartData.map((item) => { const max = Math.max(...chartData.map((entry) => Math.abs(entry.value)), 1); return <div className="chart-column" key={item.label}><div className="bar-value">{item.value.toLocaleString()}</div><div className="bar" style={{ height: `${Math.max(4, Math.abs(item.value) / max * 210)}px` }} /><span>{item.label}</span></div>; })}</div> : <div className="empty-chart"><BarChart3 size={40} /><h3>No numeric cells selected</h3><p>Select a range containing numbers and try again.</p></div>}
-        <div className="modal-footer"><button className="secondary-button" onClick={() => setChartOpen(false)}>Cancel</button><button className="primary-button" disabled={!chartData.length} onClick={() => { setChartOpen(false); setStatus("Chart added to workbook view"); }}>Add chart</button></div>
-      </section></div>}
 
       <input ref={fileInputRef} hidden type="file" accept=".xlsx,.xls,.csv,.tsv" onChange={(event) => { const selected = event.target.files?.[0]; if (!selected) return; void selected.arrayBuffer().then((buffer) => loadDesktopFile({ path: "", name: selected.name, extension: selected.name.split(".").pop()?.toLowerCase() || "xlsx", data: new Uint8Array(buffer) })); }} />
     </div>
