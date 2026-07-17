@@ -4,6 +4,14 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: "./",
+  test: {
+    poolOptions: {
+      // Node >=22 injects a broken localStorage global that shadows jsdom's;
+      // disable it so tests get the real Storage implementation.
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+    },
+  },
   server: { host: "127.0.0.1", port: 5173 },
   build: {
     outDir: "dist",
