@@ -76,6 +76,6 @@ describe("Gridstone interactions", () => {
     await user.keyboard("{Meta>}f{/Meta}");
     const search = screen.getByPlaceholderText("Find in sheet");
     await user.type(search, "North");
-    expect(screen.getByText("1 result")).toBeTruthy();
+    expect(screen.getByText("1 of 1")).toBeTruthy();
   }, 15_000);
 });

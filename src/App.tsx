@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownWideNarrow, ArrowUpNarrowWide,
-  Bold, Check, ChevronDown, Copy, DollarSign, Download, FilePlus2,
+  Bold, Check, ChevronDown, ClipboardPaste, Copy, DollarSign, Download, FilePlus2,
   FolderOpen, Italic, Moon, PaintBucket, Percent, Plus,
   Redo2, Save, Scissors, Search, Snowflake, Sun, Trash2, Underline, Undo2, X,
 } from "lucide-react";
@@ -31,14 +31,14 @@ function ColorControl({ label, value, icon, onChange }: { label: string; value: 
   return <label className="color-control" title={label} aria-label={label}>{icon}<span className="color-swatch" style={{ background: value }} /><input type="color" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
-function CellEditor({ initialValue, onCommit, onCancel }: { initialValue: string; onCommit: (value: string) => void; onCancel: () => void }) {
+function CellEditor({ initialValue, onCommit, onCancel }: { initialValue: string; onCommit: (value: string, move?: "down" | "right") => void; onCancel: () => void }) {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
   const finished = useRef(false);
-  const finish = useCallback(() => {
+  const finish = useCallback((move?: "down" | "right") => {
     if (finished.current) return;
     finished.current = true;
-    onCommit(value);
+    onCommit(value, move);
   }, [onCommit, value]);
 
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
@@ -50,10 +50,11 @@ function CellEditor({ initialValue, onCommit, onCancel }: { initialValue: string
     aria-label="Edit cell value"
     onMouseDown={(event) => event.stopPropagation()}
     onChange={(event) => setValue(event.target.value)}
-    onBlur={finish}
+    onBlur={() => finish()}
     onKeyDown={(event) => {
       event.stopPropagation();
-      if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); finish(); }
+      if (event.key === "Enter") { event.preventDefault(); finish("down"); }
+      if (event.key === "Tab") { event.preventDefault(); finish("right"); }
       if (event.key === "Escape") { event.preventDefault(); finished.current = true; onCancel(); }
     }}
   />;
@@ -110,7 +111,10 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null);
+  const [colResize, setColResize] = useState<{ col: number; startX: number; startWidth: number; width: number } | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -142,9 +146,14 @@ export default function App() {
     commit((current) => ({ ...current, sheets: current.sheets.map((sheet) => sheet.id === current.activeSheetId ? updater(sheet) : sheet) }), message);
   }, [commit]);
 
-  const commitEdit = useCallback((address: string, value: string) => {
+  const commitEdit = useCallback((address: string, value: string, move?: "down" | "right") => {
     updateActiveSheet((sheet) => setCellInput(sheet, address, value), `Updated ${address}`);
     setEditing((current) => current?.address === address ? null : current);
+    const point = pointFromAddress(address);
+    if (move && point) {
+      const next = move === "down" ? { row: point.row + 1, col: point.col } : { row: point.row, col: point.col + 1 };
+      setSelection({ start: next, end: next });
+    }
     setTimeout(() => gridRef.current?.focus(), 0);
   }, [updateActiveSheet]);
 
@@ -290,11 +299,12 @@ export default function App() {
     commit((current) => { const sheets = current.sheets.filter((sheet) => sheet.id !== id); return { ...current, sheets, activeSheetId: current.activeSheetId === id ? sheets[0].id : current.activeSheetId }; }, "Deleted worksheet");
   }, [workbook.sheets.length, commit]);
 
-  const renameSheet = useCallback((id: string) => {
-    const current = workbook.sheets.find((sheet) => sheet.id === id); if (!current) return;
-    const name = window.prompt("Worksheet name", current.name)?.trim();
-    if (name) commit((book) => ({ ...book, sheets: book.sheets.map((sheet) => sheet.id === id ? { ...sheet, name: name.slice(0, 31) } : sheet) }), "Renamed worksheet");
-  }, [workbook.sheets, commit]);
+  const renameSheet = useCallback((id: string, name: string) => {
+    const trimmed = name.trim().slice(0, 31);
+    if (trimmed && trimmed !== workbookRef.current.sheets.find((sheet) => sheet.id === id)?.name)
+      commit((book) => ({ ...book, sheets: book.sheets.map((sheet) => sheet.id === id ? { ...sheet, name: trimmed } : sheet) }), "Renamed worksheet");
+    setRenamingSheetId(null);
+  }, [commit]);
 
   const handleGridKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (editing) return;
@@ -362,17 +372,54 @@ export default function App() {
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   }, [saveFile, openFile, newWorkbook]);
 
+  useEffect(() => {
+    if (!colResize) return;
+    const onMove = (event: MouseEvent) => setColResize((current) => current && { ...current, width: Math.max(48, current.startWidth + event.clientX - current.startX) });
+    const onUp = () => setColResize((current) => {
+      if (current && current.width !== current.startWidth) {
+        const { col, width } = current;
+        updateActiveSheet((sheet) => ({ ...sheet, columnWidths: { ...sheet.columnWidths, [col]: width } }), `Resized column ${columnName(col)}`);
+      }
+      return null;
+    });
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [Boolean(colResize), updateActiveSheet]);
+
   const dimensions = useMemo(() => {
     let rows = DEFAULT_ROWS, cols = DEFAULT_COLS;
     Object.keys(activeSheet.cells).forEach((address) => { const point = pointFromAddress(address); if (point) { rows = Math.max(rows, point.row + 20); cols = Math.max(cols, point.col + 8); } });
     return { rows: Math.min(rows, 500), cols: Math.min(cols, 100) };
   }, [activeSheet.cells]);
 
+  const cellValues = useMemo(() => {
+    const values: Record<string, string> = {};
+    for (const [address, cell] of Object.entries(activeSheet.cells)) values[address] = displayValue(evaluateCell(workbook, activeSheet, address), cell.style);
+    return values;
+  }, [activeSheet, workbook]);
+
   const findMatches = useMemo(() => {
     if (!findQuery.trim()) return new Set<string>();
     const query = findQuery.toLowerCase();
-    return new Set(Object.entries(activeSheet.cells).filter(([address, cell]) => displayValue(evaluateCell(workbook, activeSheet, address), cell.style).toLowerCase().includes(query)).map(([address]) => address));
-  }, [findQuery, activeSheet, workbook]);
+    return new Set(Object.keys(cellValues).filter((address) => cellValues[address].toLowerCase().includes(query)));
+  }, [findQuery, cellValues]);
+
+  const orderedMatches = useMemo(() => [...findMatches]
+    .map((address) => ({ address, point: pointFromAddress(address)! }))
+    .sort((a, b) => a.point.row - b.point.row || a.point.col - b.point.col)
+    .map((item) => item.address), [findMatches]);
+
+  const gotoMatch = useCallback((step: number) => {
+    if (!orderedMatches.length) return;
+    const index = ((findIndex + step) % orderedMatches.length + orderedMatches.length) % orderedMatches.length;
+    setFindIndex(index);
+    const point = pointFromAddress(orderedMatches[index]);
+    if (point) {
+      setSelection({ start: point, end: point });
+      gridRef.current?.querySelector(`[aria-label^="${orderedMatches[index]},"]`)?.scrollIntoView({ block: "center", inline: "center" });
+    }
+  }, [orderedMatches, findIndex]);
 
   const selectedStats = useMemo(() => {
     const values = selectionAddresses(selection).map((address) => evaluateCell(workbook, activeSheet, address)).filter((value): value is number => typeof value === "number");
@@ -393,7 +440,7 @@ export default function App() {
         <div className="brand-mark" aria-hidden="true"><span>G</span></div>
         <div className="document-title">
           <div><strong>{file.name.replace(/\.[^.]+$/, "")}</strong>{dirty && <span className="dirty-dot" title="Unsaved changes">•</span>}</div>
-          <span>{dirty ? "Unsaved changes" : "Saved locally"}</span>
+          <span>{dirty ? "Unsaved changes" : file.path ? "Saved locally" : "Not saved yet"}</span>
         </div>
       </header>
 
@@ -418,7 +465,7 @@ export default function App() {
           <IconButton label="Redo" disabled={!redoStack.current.length} onClick={redo}><Redo2 size={18} /></IconButton>
         </div>
         <div className="tool-group">
-          <ToolButton label="Paste" icon={<Download size={18} />} onClick={() => void pasteSelection()} />
+          <ToolButton label="Paste" icon={<ClipboardPaste size={18} />} onClick={() => void pasteSelection()} />
           <IconButton label="Cut" onClick={() => void copySelection(true)}><Scissors size={17} /></IconButton>
           <IconButton label="Copy" onClick={() => void copySelection()}><Copy size={17} /></IconButton>
         </div>
@@ -452,27 +499,30 @@ export default function App() {
       </section>
 
       <section className="formula-row" aria-label="Formula bar">
-        <div className="name-box">{selectedAddress}<ChevronDown size={14} /></div>
+        <div className="name-box">{selectedAddress}</div>
         <div className="formula-symbol">ƒx</div>
         <FormulaEditor key={selectedAddress} address={selectedAddress} initialValue={formulaValue} onCommit={commitEdit} onFocusGrid={() => gridRef.current?.focus()} />
       </section>
 
-      {findOpen && <div className="find-bar" role="search"><Search size={17} /><input autoFocus placeholder="Find in sheet" value={findQuery} onChange={(event) => setFindQuery(event.target.value)} /><span>{findMatches.size} result{findMatches.size === 1 ? "" : "s"}</span><button aria-label="Close find" onClick={() => setFindOpen(false)}><X size={17} /></button></div>}
+      {findOpen && <div className="find-bar" role="search"><Search size={17} /><input autoFocus placeholder="Find in sheet" value={findQuery} onChange={(event) => { setFindQuery(event.target.value); setFindIndex(-1); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); gotoMatch(event.shiftKey ? -1 : 1); } }} /><span>{findMatches.size ? `${Math.max(1, findIndex + 1)} of ${findMatches.size}` : "0 results"}</span><button aria-label="Previous match" disabled={!findMatches.size} onClick={() => gotoMatch(-1)}><ChevronDown size={15} style={{ transform: "rotate(180deg)" }} /></button><button aria-label="Next match" disabled={!findMatches.size} onClick={() => gotoMatch(1)}><ChevronDown size={15} /></button><button aria-label="Close find" onClick={() => setFindOpen(false)}><X size={17} /></button></div>}
 
       <main className="workspace">
-        <div className="grid-viewport" id="spreadsheet-grid" ref={gridRef} role="grid" aria-label={`${activeSheet.name} spreadsheet`} tabIndex={0} onKeyDown={handleGridKeyDown} style={{ fontSize: `${zoom}%` }}>
-          <div className="sheet-grid" style={{ gridTemplateColumns: `48px ${Array.from({ length: dimensions.cols }, (_, col) => `${activeSheet.columnWidths[col] || 112}px`).join(" ")}` }}>
+        <div className="grid-viewport" id="spreadsheet-grid" ref={gridRef} role="grid" aria-label={`${activeSheet.name} spreadsheet`} tabIndex={0} onKeyDown={handleGridKeyDown} style={{ zoom: zoom / 100 }}>
+          <div className="sheet-grid" style={{ gridTemplateColumns: `48px ${Array.from({ length: dimensions.cols }, (_, col) => `${colResize?.col === col ? colResize.width : activeSheet.columnWidths[col] || 112}px`).join(" ")}` }}>
             <div className="corner-cell" aria-hidden="true" />
-            {Array.from({ length: dimensions.cols }, (_, col) => <div className="column-header" role="columnheader" key={`h-${col}`}>{columnName(col)}</div>)}
+            {Array.from({ length: dimensions.cols }, (_, col) => <div className="column-header" role="columnheader" key={`h-${col}`}>
+              {columnName(col)}
+              <span className="col-resize-handle" onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); setColResize({ col, startX: event.clientX, startWidth: activeSheet.columnWidths[col] || 112, width: activeSheet.columnWidths[col] || 112 }); }} />
+            </div>)}
             {Array.from({ length: dimensions.rows }, (_, row) => <div className="grid-row" role="row" key={`row-${row}`} style={{ display: "contents" }}>
-              <div className="row-header" role="rowheader">{row + 1}</div>
+              <div className={`row-header ${row === 0 && activeSheet.frozenRows ? "frozen-row" : ""}`} role="rowheader">{row + 1}</div>
               {Array.from({ length: dimensions.cols }, (_, col) => {
                 const address = addressOf(row, col); const cell = activeSheet.cells[address];
                 const n = normalizedSelection(selection); const selected = row >= n.start.row && row <= n.end.row && col >= n.start.col && col <= n.end.col;
-                const active = address === selectedAddress; const value = displayValue(evaluateCell(workbook, activeSheet, address), cell?.style);
+                const active = address === selectedAddress; const value = cellValues[address] || "";
                 const style = cell?.style;
                 return <div
-                  className={`grid-cell ${selected ? "selected" : ""} ${active ? "active" : ""} ${findMatches.has(address) ? "find-match" : ""}`}
+                  className={`grid-cell ${selected ? "selected" : ""} ${active ? "active" : ""} ${findMatches.has(address) ? "find-match" : ""} ${row === 0 && activeSheet.frozenRows ? "frozen-row" : ""}`}
                   role="gridcell" aria-selected={selected} aria-label={`${address}, ${value || "blank"}`} key={address}
                   style={{ fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor, backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined }}
                   onMouseDown={(event) => { setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
@@ -480,7 +530,7 @@ export default function App() {
                   onDoubleClick={() => beginEdit(address)}
                   title={typeof cell?.raw === "string" && cell.raw.startsWith("=") ? cell.raw : undefined}
                 >
-                  {editing?.address === address ? <CellEditor initialValue={editing.initialValue} onCommit={(nextValue) => commitEdit(address, nextValue)} onCancel={() => { setEditing(null); gridRef.current?.focus(); }} /> : <span>{value}</span>}
+                  {editing?.address === address ? <CellEditor initialValue={editing.initialValue} onCommit={(nextValue, move) => commitEdit(address, nextValue, move)} onCancel={() => { setEditing(null); gridRef.current?.focus(); }} /> : <span>{value}</span>}
                 </div>;
               })}
             </div>)}
@@ -492,7 +542,20 @@ export default function App() {
       <footer className="bottom-bar">
         <div className="sheet-controls">
           <button className="add-sheet" type="button" aria-label="Add worksheet" onClick={addSheet}><Plus size={17} /></button>
-          {workbook.sheets.map((sheet) => <div className={`sheet-tab-wrap ${sheet.id === workbook.activeSheetId ? "active" : ""}`} key={sheet.id}><button className="sheet-tab" type="button" onClick={() => { setWorkbook((current) => ({ ...current, activeSheetId: sheet.id })); setSelection(INITIAL_SELECTION); }} onDoubleClick={() => renameSheet(sheet.id)}>{sheet.name}</button>{sheet.id === workbook.activeSheetId && workbook.sheets.length > 1 && <button className="sheet-delete" aria-label={`Delete ${sheet.name}`} onClick={() => deleteSheet(sheet.id)}><X size={13} /></button>}</div>)}
+          {workbook.sheets.map((sheet) => <div className={`sheet-tab-wrap ${sheet.id === workbook.activeSheetId ? "active" : ""}`} key={sheet.id}>
+            {renamingSheetId === sheet.id
+              ? <input
+                  className="sheet-rename" autoFocus defaultValue={sheet.name} aria-label={`Rename ${sheet.name}`}
+                  onFocus={(event) => event.target.select()}
+                  onBlur={(event) => renameSheet(sheet.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") { event.preventDefault(); renameSheet(sheet.id, event.currentTarget.value); }
+                    if (event.key === "Escape") { event.preventDefault(); setRenamingSheetId(null); }
+                  }}
+                />
+              : <button className="sheet-tab" type="button" onClick={() => { setWorkbook((current) => ({ ...current, activeSheetId: sheet.id })); setSelection(INITIAL_SELECTION); }} onDoubleClick={() => setRenamingSheetId(sheet.id)}>{sheet.name}</button>}
+            {sheet.id === workbook.activeSheetId && workbook.sheets.length > 1 && <button className="sheet-delete" aria-label={`Delete ${sheet.name}`} onClick={() => deleteSheet(sheet.id)}><X size={13} /></button>}
+          </div>)}
         </div>
         <div className="status-message" aria-live="polite">{status}</div>
         <div className="selection-stats"><span>Count <strong>{selectedStats.count}</strong></span>{selectedStats.numeric > 0 && <><span>Average <strong>{selectedStats.average.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span><span>Sum <strong>{selectedStats.sum.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span></>}</div>
