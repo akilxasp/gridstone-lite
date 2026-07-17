@@ -33,10 +33,13 @@ Create installers:
 
 ```bash
 npm run dist:mac
+npm run dist:mac:universal
 npm run dist:win
 ```
 
-Windows artifacts should be produced on Windows or in a Windows CI runner. Public distribution also requires a Windows code-signing certificate and an Apple Developer ID/notarization setup for macOS.
+`dist:mac:universal` creates one macOS installer for Apple Silicon (including M3 Pro) and Intel x64 Macs (including Intel i7) running macOS 11 or later. The local universal build uses an ad-hoc signature for internal testing. Public distribution still requires an Apple Developer ID signature and notarization.
+
+Windows artifacts should be produced on Windows or in a Windows CI runner. Public distribution also requires a Windows code-signing certificate.
 
 ## Excel compatibility boundary
 
