@@ -524,7 +524,7 @@ export default function App() {
                 return <div
                   className={`grid-cell ${selected ? "selected" : ""} ${active ? "active" : ""} ${findMatches.has(address) ? "find-match" : ""} ${row === 0 && activeSheet.frozenRows ? "frozen-row" : ""}`}
                   role="gridcell" aria-selected={selected} aria-label={`${address}, ${value || "blank"}`} key={address}
-                  style={{ fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor, backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined }}
+                  style={{ fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor || (style?.fillColor ? "#191919" : undefined), backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined }}
                   onMouseDown={(event) => { setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
                   onMouseEnter={() => { if (dragging) setSelection((current) => ({ ...current, end: { row, col } })); }}
                   onDoubleClick={() => beginEdit(address)}
