@@ -6,9 +6,6 @@ contextBridge.exposeInMainWorld("desktop", {
   readPath: (path) => ipcRenderer.invoke("read-path", path),
   saveFile: (request) => ipcRenderer.invoke("save-file", request),
   print: () => ipcRenderer.invoke("print-window"),
-  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
-  downloadUpdate: () => ipcRenderer.invoke("download-update"),
-  installUpdate: () => ipcRenderer.invoke("install-update"),
   onCommand: (callback) => {
     const listener = (_event, command, payload) => callback(command, payload);
     ipcRenderer.on("app-command", listener);

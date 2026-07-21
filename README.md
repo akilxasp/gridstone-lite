@@ -14,10 +14,15 @@ A local-first spreadsheet desktop application for macOS and Windows, built with 
 - Sort, duplicate removal, find, charts, notes, print/PDF, dark mode, zoom, frozen rows, and selection statistics
 - Row, column, and select-all header selection with click-drag ranges
 - Freeze top row and/or first column, and merge/unmerge cell ranges
-- Automatic in-app updates from GitHub Releases (download and install without re-downloading manually)
 - Local recovery copies, unsaved-change protection, and offline operation
 - Windows NSIS/portable and macOS DMG/ZIP packaging
 
 The universal build supports Apple Silicon and Intel x64 Macs on macOS 11 or later, using an ad-hoc signature for internal testing. Public distribution requires an Apple Developer ID signature and notarization.
 
 Build Windows artifacts on Windows or a Windows CI runner. Public distribution requires a Windows code-signing certificate.
+
+To update, download the latest release and replace the app.
+
+## Excel compatibility
+
+Gridstone is a working spreadsheet application, not an Excel clone. It does not support VBA/macros, Power Query, pivot tables, advanced chart editing, real-time collaboration, password-protected workbooks, every Excel function, or enterprise cloud connectors.
