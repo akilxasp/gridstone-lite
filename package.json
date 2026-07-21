@@ -1,6 +1,6 @@
 {
   "name": "gridstone",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "author": "Gridstone",
   "description": "A local-first cross-platform spreadsheet desktop application",

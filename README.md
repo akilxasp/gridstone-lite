@@ -1,22 +1,22 @@
 # Gridstone
 
-Gridstone is a local-first spreadsheet desktop application for macOS and Windows. It uses Electron, React, TypeScript, and SheetJS.
+A local-first spreadsheet desktop application for macOS and Windows, built with Electron, React, TypeScript, and SheetJS.
 
-## Included in this build
+## Features
 
 - Native open, save, save-as, print, recent-file, drag-and-drop, and file-association workflows
 - `.xlsx`, `.xls`, `.csv`, and `.tsv` import; `.xlsx` and `.csv` export
 - Multiple worksheets with add, rename, switch, and delete controls
 - Direct cell and formula-bar editing
 - Keyboard navigation, range selection, copy, cut, paste, clear, undo, and redo
-- Common formulas, arithmetic, comparisons, cell/range references, and circular-reference detection
+- Formulas, arithmetic, comparisons, cell/range references, and circular-reference detection
 - Text, fill, emphasis, alignment, number, currency, and percentage formatting
 - Sort, duplicate removal, find, charts, notes, print/PDF, dark mode, zoom, frozen rows, and selection statistics
 - Row, column, and select-all header selection with click-drag ranges
 - Freeze top row and/or first column, and merge/unmerge cell ranges
 - Automatic in-app updates from GitHub Releases (download and install without re-downloading manually)
 - Local recovery copies, unsaved-change protection, and offline operation
-- Windows NSIS/portable and macOS DMG/ZIP packaging configuration
+- Windows NSIS/portable and macOS DMG/ZIP packaging
 
 ## Development
 
@@ -25,24 +25,25 @@ npm install
 npm run dev
 ```
 
-Run verification:
+Run tests and build:
 
 ```bash
 npm test
 npm run build
 ```
 
-Create installers:
+## Installers
 
 ```bash
-npm run dist:mac
-npm run dist:mac:universal
-npm run dist:win
+npm run dist:mac            # Apple Silicon DMG
+npm run dist:mac:x64        # Intel x64 DMG
+npm run dist:mac:universal  # Universal DMG
+npm run dist:win            # Windows NSIS/portable
 ```
 
-`dist:mac:universal` creates one macOS installer for Apple Silicon (including M3 Pro) and Intel x64 Macs (including Intel i7) running macOS 11 or later. The local universal build uses an ad-hoc signature for internal testing. Public distribution still requires an Apple Developer ID signature and notarization.
+The universal build supports Apple Silicon and Intel x64 Macs on macOS 11 or later, using an ad-hoc signature for internal testing. Public distribution requires an Apple Developer ID signature and notarization.
 
-Windows artifacts should be produced on Windows or in a Windows CI runner. Public distribution also requires a Windows code-signing certificate.
+Build Windows artifacts on Windows or a Windows CI runner. Public distribution requires a Windows code-signing certificate.
 
 ## Automatic updates
 
@@ -62,6 +63,6 @@ Update mechanism per platform:
 - **Windows:** full silent auto-update via `electron-updater` (Squirrel). New versions download in the background; the in-app banner offers **Restart & install**. Unsigned installers work but show SmartScreen warnings, so a code-signing certificate is recommended. The `portable` target does not auto-update.
 - **macOS:** Squirrel.Mac requires a signed, notarized build, which needs a paid Apple Developer ID. To avoid that, macOS uses a **manual download-and-open** flow instead: the app queries the latest GitHub release, and if it's newer, the banner offers **Download update**. It downloads the matching `.dmg` to the Downloads folder and opens it; the user drags Gridstone into Applications and relaunches. No signing or Apple account required. If you later obtain a Developer ID, sign + notarize the build and switch macOS back to the Squirrel path in `electron/main.cjs` for fully silent updates.
 
-## Excel compatibility boundary
+## Excel compatibility
 
-This is a working spreadsheet application, not a complete clone of Microsoft Excel. Full parity requires separate engines and substantial additional product work for VBA/macros, Power Query, pivot tables, advanced chart editing, real-time collaboration, password-protected workbooks, every Excel function, perfect preservation of unsupported workbook objects, and enterprise cloud connectors.
+Gridstone is a working spreadsheet application, not an Excel clone. It does not support VBA/macros, Power Query, pivot tables, advanced chart editing, real-time collaboration, password-protected workbooks, every Excel function, or enterprise cloud connectors.
