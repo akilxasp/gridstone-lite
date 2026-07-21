@@ -513,7 +513,7 @@ export default function App() {
           <div className="tool-group compact">
             <IconButton label="Currency format" active={currentStyle.format === "currency"} onClick={() => applyStyle({ format: "currency" })}><DollarSign size={17} /></IconButton>
             <IconButton label="Percent format" active={currentStyle.format === "percent"} onClick={() => applyStyle({ format: "percent" })}><Percent size={17} /></IconButton>
-            <select aria-label="Number format" value={currentStyle.format || "general"} onChange={(event) => applyStyle({ format: event.target.value as CellStyle["format"] })}><option value="general">General</option><option value="number">Number</option><option value="currency">Currency</option><option value="percent">Percent</option><option value="date">Date</option></select>
+            <select aria-label="Number format" value={currentStyle.format || "general"} onChange={(event) => applyStyle({ format: event.target.value as CellStyle["format"] })}><option value="general">General</option><option value="number">Number</option><option value="currency">Currency</option><option value="percent">Percent</option></select>
           </div>
         </>}
         {ribbon === "Insert" && <>

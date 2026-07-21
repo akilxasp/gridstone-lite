@@ -9,7 +9,7 @@ export interface CellStyle {
   textColor?: string;
   fillColor?: string;
   align?: "left" | "center" | "right";
-  format?: "general" | "number" | "currency" | "percent" | "date";
+  format?: "general" | "number" | "currency" | "percent";
   wrap?: boolean;
 }
 
@@ -24,8 +24,6 @@ export interface SheetData {
   name: string;
   cells: Record<string, CellData>;
   columnWidths: Record<number, number>;
-  hiddenColumns: number[];
-  hiddenRows: number[];
   frozenRows: number;
   frozenColumns: number;
   merges: string[];
@@ -52,7 +50,7 @@ export function uid(prefix = "id") {
 
 export function createSheet(name = "Sheet 1"): SheetData {
   return {
-    id: uid("sheet"), name, cells: {}, columnWidths: {}, hiddenColumns: [], hiddenRows: [],
+    id: uid("sheet"), name, cells: {}, columnWidths: {},
     frozenRows: 0, frozenColumns: 0, merges: [],
   };
 }
