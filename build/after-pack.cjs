@@ -21,8 +21,9 @@ exports.default = async function afterPack(context) {
     fs.rmSync(path.join(localesDir, entry), { recursive: true, force: true });
   }
 
-  // Universal builds lipo-merge binaries, which invalidates signatures — re-sign.
-  if (!context.appOutDir.endsWith("mac-universal")) return;
+  // Ad-hoc sign every mac build. identity:null skips signing entirely, and an
+  // unsigned app won't launch on Apple Silicon. (Universal builds also need
+  // this because the lipo merge invalidates any prior signature.)
   const entitlements = path.join(context.packager.projectDir, "build", "entitlements.mac.plist");
   execFileSync("/usr/bin/codesign", [
     "--force",
