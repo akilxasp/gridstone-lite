@@ -78,7 +78,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .ribbon-tab.active { color: var(--brand); border-bottom-color: var(--brand); }
 .file-tab { color: var(--brand); }
 .file-menu-wrap { position: relative; }
-.file-menu { position: absolute; z-index: var(--z-dropdown); top: 37px; left: 0; display: flex; flex-direction: column; width: 290px; padding: 8px; border: 1px solid var(--line); border-radius: 0 0 12px 12px; background: var(--surface); box-shadow: var(--shadow); transform-origin: top left; animation: menu-in 160ms cubic-bezier(.23,1,.32,1); }
+.file-menu { position: absolute; z-index: var(--z-dropdown); top: 37px; left: 0; display: flex; flex-direction: column; width: 290px; margin-top: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); transform-origin: top left; animation: menu-in 160ms cubic-bezier(.23,1,.32,1); }
 .file-menu button { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 40px; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 13px; }
 .file-menu button:hover { background: var(--surface-muted); }
 .file-menu svg { width: 17px; }
@@ -97,6 +97,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .icon-button:active, .tool-button:active, .share-button:active { transform: scale(.97); }
 .tool-button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .tool-button:hover { background: var(--surface-muted); }
+.tool-button.file-tab { color: var(--brand); font-weight: 700; }
+.tool-button.file-tab.is-active { background: var(--brand-soft); }
+.file-menu-scrim { position: fixed; inset: 0; z-index: var(--z-dropdown); background: transparent; }
 .tool-group select { height: 32px; max-width: 110px; padding: 0 25px 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 12px; }
 .color-control { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 7px; color: var(--ink-soft); cursor: pointer; }
 .color-control:hover { background: var(--surface-muted); }
@@ -127,9 +130,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .grid-viewport { min-width: 0; min-height: 0; flex: 1; overflow: auto; outline: 0; background: var(--surface); font-size: 100%; }
 .sheet-grid { display: grid; grid-auto-rows: 29px; width: max-content; min-width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
 .corner-cell, .column-header, .row-header { position: sticky; z-index: var(--z-sticky); display: grid; place-items: center; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); background: var(--grid-header); color: var(--ink-soft); font-size: 11px; font-weight: 600; user-select: none; }
-.corner-cell { top: 0; left: 0; z-index: 23; }
-.column-header { top: 0; }
-.row-header { left: 0; }
+.corner-cell { top: 0; left: 0; z-index: 23; cursor: pointer; }
+.column-header { top: 0; cursor: pointer; }
+.row-header { left: 0; cursor: pointer; }
+.column-header:hover, .row-header:hover { color: var(--ink); background: var(--surface-muted); }
+.column-header.header-selected, .row-header.header-selected { color: var(--brand); background: var(--brand-soft); }
+.column-header.frozen, .row-header.frozen { box-shadow: inset 0 0 0 1px var(--line-strong); }
+.corner-cell:hover { color: var(--ink); }
 .grid-cell { position: relative; min-width: 0; min-height: 29px; padding: 5px 7px; border-right: 1px solid var(--grid-line); border-bottom: 1px solid var(--grid-line); background: var(--surface); overflow: hidden; white-space: nowrap; text-overflow: clip; user-select: none; }
 .grid-cell > span { pointer-events: none; }
 .grid-cell.selected { background-image: linear-gradient(var(--selection), var(--selection)); }

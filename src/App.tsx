@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownWideNarrow, ArrowUpNarrowWide,
-  BarChart3, Bold, Check, ChevronDown, Copy, DollarSign, Download, FilePlus2,
+  BarChart3, Bold, Check, ChevronDown, Columns, Combine, Copy, DollarSign, Download, FilePlus2,
   FolderOpen, Italic, Moon, PaintBucket, PanelRight, Percent, Plus, Printer,
   Redo2, Save, Scissors, Search, Snowflake, Sun, Trash2, Underline, Undo2, X,
 } from "lucide-react";
 import {
-  CellData, CellStyle, DEFAULT_COLS, DEFAULT_ROWS, Selection, SheetData, WorkbookData,
+  CellData, CellStyle, DEFAULT_COLS, DEFAULT_ROWS, MergeRegion, Selection, SheetData, WorkbookData,
   addressOf, columnName, createSheet, displayValue, evaluateCell, exportWorkbook,
-  importWorkbook, normalizedSelection, pointFromAddress, sampleWorkbook, selectionAddresses,
-  setCellInput,
+  importWorkbook, mergeRegionOf, mergesOverlapping, normalizedSelection, pointFromAddress,
+  rangeString, sampleWorkbook, selectionAddresses, setCellInput,
 } from "./workbook";
 
 type RibbonTab = "Home" | "Insert" | "Data" | "View";
@@ -115,9 +115,13 @@ export default function App() {
   const [chartOpen, setChartOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [fileMenuPos, setFileMenuPos] = useState({ top: 0, left: 0 });
   const [zoom, setZoom] = useState(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileBtnRef = useRef<HTMLButtonElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const dragKind = useRef<"cell" | "row" | "col">("cell");
+  const headerAnchor = useRef(0);
   const undoStack = useRef<WorkbookData[]>([]);
   const redoStack = useRef<WorkbookData[]>([]);
   const workbookRef = useRef(workbook);
@@ -129,6 +133,32 @@ export default function App() {
   const activeSheet = useMemo(() => workbook.sheets.find((sheet) => sheet.id === workbook.activeSheetId) || workbook.sheets[0], [workbook]);
   const selectedAddress = addressOf(selection.end.row, selection.end.col);
   const selectedCell = activeSheet.cells[selectedAddress];
+
+  const dimensions = useMemo(() => {
+    let rows = DEFAULT_ROWS, cols = DEFAULT_COLS;
+    Object.keys(activeSheet.cells).forEach((address) => { const point = pointFromAddress(address); if (point) { rows = Math.max(rows, point.row + 20); cols = Math.max(cols, point.col + 8); } });
+    (activeSheet.merges || []).forEach((range) => { const region = mergeRegionOf(range); if (region) { rows = Math.max(rows, region.anchor.row + region.rows); cols = Math.max(cols, region.anchor.col + region.cols); } });
+    return { rows: Math.min(rows, 500), cols: Math.min(cols, 100) };
+  }, [activeSheet.cells, activeSheet.merges]);
+
+  const mergeMap = useMemo(() => {
+    const anchors = new Map<string, MergeRegion>();
+    const covered = new Set<string>();
+    (activeSheet.merges || []).forEach((range) => {
+      const region = mergeRegionOf(range); if (!region) return;
+      anchors.set(`${region.anchor.row},${region.anchor.col}`, region);
+      for (let row = region.anchor.row; row < region.anchor.row + region.rows; row++)
+        for (let col = region.anchor.col; col < region.anchor.col + region.cols; col++)
+          if (row !== region.anchor.row || col !== region.anchor.col) covered.add(`${row},${col}`);
+    });
+    return { anchors, covered };
+  }, [activeSheet.merges]);
+
+  const colOffsets = useMemo(() => {
+    const offsets: number[] = [48];
+    for (let col = 0; col < dimensions.cols; col++) offsets.push(offsets[col] + (activeSheet.columnWidths[col] || 112));
+    return offsets;
+  }, [dimensions.cols, activeSheet.columnWidths]);
 
   const commit = useCallback((updater: (current: WorkbookData) => WorkbookData, message = "Updated") => {
     setWorkbook((current) => {
@@ -288,6 +318,42 @@ export default function App() {
     }, "Removed duplicate rows");
   }, [selection, updateActiveSheet]);
 
+  const toggleMerge = useCallback(() => {
+    const overlapping = mergesOverlapping(activeSheet.merges || [], selection);
+    if (overlapping.length) {
+      updateActiveSheet((sheet) => ({ ...sheet, merges: (sheet.merges || []).filter((range) => !overlapping.includes(range)) }), "Unmerged cells");
+      return;
+    }
+    const n = normalizedSelection(selection);
+    if (n.start.row === n.end.row && n.start.col === n.end.col) { setStatus("Select at least two cells to merge"); return; }
+    const range = rangeString(selection);
+    const anchor = addressOf(n.start.row, n.start.col);
+    updateActiveSheet((sheet) => {
+      const cells = { ...sheet.cells };
+      const anchorCell = cells[anchor] || { raw: null };
+      cells[anchor] = { ...anchorCell, style: { ...anchorCell.style, align: anchorCell.style?.align || "center" } };
+      return { ...sheet, merges: [...(sheet.merges || []), range] };
+    }, "Merged cells");
+  }, [activeSheet.merges, selection, updateActiveSheet]);
+
+  const selectColumn = useCallback((col: number, extend: boolean) => {
+    dragKind.current = "col"; headerAnchor.current = col; setDragging(true);
+    const anchor = extend ? selection.start.col : col;
+    setSelection({ start: { row: 0, col: Math.min(anchor, col) }, end: { row: dimensions.rows - 1, col: Math.max(anchor, col) } });
+    gridRef.current?.focus();
+  }, [selection.start.col, dimensions.rows]);
+
+  const selectRow = useCallback((row: number, extend: boolean) => {
+    dragKind.current = "row"; headerAnchor.current = row; setDragging(true);
+    const anchor = extend ? selection.start.row : row;
+    setSelection({ start: { row: Math.min(anchor, row), col: 0 }, end: { row: Math.max(anchor, row), col: dimensions.cols - 1 } });
+    gridRef.current?.focus();
+  }, [selection.start.row, dimensions.cols]);
+
+  const selectAll = useCallback(() => {
+    dragKind.current = "cell"; setSelection({ start: { row: 0, col: 0 }, end: { row: dimensions.rows - 1, col: dimensions.cols - 1 } }); gridRef.current?.focus();
+  }, [dimensions.rows, dimensions.cols]);
+
   const addSheet = useCallback(() => {
     const sheet = createSheet(`Sheet ${workbook.sheets.length + 1}`);
     commit((current) => ({ ...current, sheets: [...current.sheets, sheet], activeSheetId: sheet.id }), "Added worksheet");
@@ -371,12 +437,6 @@ export default function App() {
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   }, [saveFile, openFile, newWorkbook]);
 
-  const dimensions = useMemo(() => {
-    let rows = DEFAULT_ROWS, cols = DEFAULT_COLS;
-    Object.keys(activeSheet.cells).forEach((address) => { const point = pointFromAddress(address); if (point) { rows = Math.max(rows, point.row + 20); cols = Math.max(cols, point.col + 8); } });
-    return { rows: Math.min(rows, 500), cols: Math.min(cols, 100) };
-  }, [activeSheet.cells]);
-
   const findMatches = useMemo(() => {
     if (!findQuery.trim()) return new Set<string>();
     const query = findQuery.toLowerCase();
@@ -407,7 +467,6 @@ export default function App() {
     }}>
       <a className="skip-link" href="#spreadsheet-grid">Skip to spreadsheet</a>
       <header className="titlebar">
-        <div className="brand-mark" aria-hidden="true"><span>G</span></div>
         <div className="document-title">
           <div><strong>{file.name.replace(/\.[^.]+$/, "")}</strong>{dirty && <span className="dirty-dot" title="Unsaved changes">•</span>}</div>
           <span>{dirty ? "Unsaved changes" : "Saved locally"}</span>
@@ -419,23 +478,13 @@ export default function App() {
       </header>
 
       <nav className="ribbon-tabs" aria-label="Workbook commands">
-        <div className="file-menu-wrap">
-          <button className={`ribbon-tab file-tab ${showFileMenu ? "active" : ""}`} type="button" onClick={() => setShowFileMenu(!showFileMenu)}>File</button>
-          {showFileMenu && <div className="file-menu" role="menu">
-            <button role="menuitem" onClick={newWorkbook}><FilePlus2 />New workbook<span>⌘N</span></button>
-            <button role="menuitem" onClick={() => void openFile()}><FolderOpen />Open…<span>⌘O</span></button>
-            <button role="menuitem" onClick={() => void saveFile()}><Save />Save<span>⌘S</span></button>
-            <button role="menuitem" onClick={() => void saveFile(true)}><Download />Save as…<span>⇧⌘S</span></button>
-            <button role="menuitem" onClick={() => void saveFile(true, "csv")}><Download />Export CSV</button>
-            <button role="menuitem" onClick={() => void printWorkbook()}><Printer />Print / PDF<span>⌘P</span></button>
-            {recentFiles.length > 0 && <div className="menu-heading">Recent files</div>}
-            {recentFiles.map((item) => <button role="menuitem" key={item.path} onClick={() => void openRecent(item)}><span className="file-badge">{item.extension}</span>{item.name}</button>)}
-          </div>}
-        </div>
         {(["Home", "Insert", "Data", "View"] as RibbonTab[]).map((tab) => <button className={`ribbon-tab ${ribbon === tab ? "active" : ""}`} type="button" key={tab} onClick={() => setRibbon(tab)}>{tab}</button>)}
       </nav>
 
       <section className="toolbar" aria-label={`${ribbon} toolbar`}>
+        <div className="tool-group compact file-menu-wrap">
+          <button ref={fileBtnRef} className={`tool-button file-tab ${showFileMenu ? "is-active" : ""}`} type="button" onClick={() => { const rect = fileBtnRef.current?.getBoundingClientRect(); if (rect) setFileMenuPos({ top: rect.bottom, left: rect.left }); setShowFileMenu((open) => !open); }}><FolderOpen size={18} /><span>File</span><ChevronDown size={14} /></button>
+        </div>
         <div className="tool-group compact">
           <IconButton label="Undo" disabled={!undoStack.current.length} onClick={undo}><Undo2 size={18} /></IconButton>
           <IconButton label="Redo" disabled={!redoStack.current.length} onClick={redo}><Redo2 size={18} /></IconButton>
@@ -459,6 +508,7 @@ export default function App() {
             <IconButton label="Align left" active={currentStyle.align === "left"} onClick={() => applyStyle({ align: "left" })}><AlignLeft size={17} /></IconButton>
             <IconButton label="Align center" active={currentStyle.align === "center"} onClick={() => applyStyle({ align: "center" })}><AlignCenter size={17} /></IconButton>
             <IconButton label="Align right" active={currentStyle.align === "right"} onClick={() => applyStyle({ align: "right" })}><AlignRight size={17} /></IconButton>
+            <IconButton label="Merge cells" active={mergesOverlapping(activeSheet.merges || [], selection).length > 0} onClick={toggleMerge}><Combine size={17} /></IconButton>
           </div>
           <div className="tool-group compact">
             <IconButton label="Currency format" active={currentStyle.format === "currency"} onClick={() => applyStyle({ format: "currency" })}><DollarSign size={17} /></IconButton>
@@ -475,10 +525,28 @@ export default function App() {
           <div className="toolbar-hint">Data tools apply to the current selection.</div>
         </>}
         {ribbon === "View" && <>
-          <div className="tool-group"><ToolButton label="Freeze top row" icon={<Snowflake size={19} />} onClick={() => updateActiveSheet((sheet) => ({ ...sheet, frozenRows: sheet.frozenRows ? 0 : 1 }), "Updated frozen rows")} /><ToolButton label={theme === "light" ? "Dark theme" : "Light theme"} icon={theme === "light" ? <Moon size={19} /> : <Sun size={19} />} onClick={() => setTheme(theme === "light" ? "dark" : "light")} /></div>
+          <div className="tool-group">
+            <ToolButton label={activeSheet.frozenRows ? "Unfreeze rows" : "Freeze top row"} icon={<Snowflake size={19} />} onClick={() => updateActiveSheet((sheet) => ({ ...sheet, frozenRows: sheet.frozenRows ? 0 : 1 }), "Updated frozen rows")} />
+            <ToolButton label={activeSheet.frozenColumns ? "Unfreeze columns" : "Freeze first column"} icon={<Columns size={19} />} onClick={() => updateActiveSheet((sheet) => ({ ...sheet, frozenColumns: sheet.frozenColumns ? 0 : 1 }), "Updated frozen columns")} />
+            <ToolButton label={theme === "light" ? "Dark theme" : "Light theme"} icon={theme === "light" ? <Moon size={19} /> : <Sun size={19} />} onClick={() => setTheme(theme === "light" ? "dark" : "light")} />
+          </div>
           <div className="zoom-toolbar"><button onClick={() => setZoom(Math.max(50, zoom - 10))}>−</button><span>{zoom}%</span><button onClick={() => setZoom(Math.min(200, zoom + 10))}>+</button></div>
         </>}
       </section>
+
+      {showFileMenu && <>
+        <div className="file-menu-scrim" onMouseDown={() => setShowFileMenu(false)} />
+        <div className="file-menu" role="menu" style={{ position: "fixed", top: fileMenuPos.top, left: fileMenuPos.left }}>
+          <button role="menuitem" onClick={newWorkbook}><FilePlus2 />New workbook<span>⌘N</span></button>
+          <button role="menuitem" onClick={() => void openFile()}><FolderOpen />Open…<span>⌘O</span></button>
+          <button role="menuitem" onClick={() => void saveFile()}><Save />Save<span>⌘S</span></button>
+          <button role="menuitem" onClick={() => void saveFile(true)}><Download />Save as…<span>⇧⌘S</span></button>
+          <button role="menuitem" onClick={() => void saveFile(true, "csv")}><Download />Export CSV</button>
+          <button role="menuitem" onClick={() => void printWorkbook()}><Printer />Print / PDF<span>⌘P</span></button>
+          {recentFiles.length > 0 && <div className="menu-heading">Recent files</div>}
+          {recentFiles.map((item) => <button role="menuitem" key={item.path} onClick={() => void openRecent(item)}><span className="file-badge">{item.extension}</span>{item.name}</button>)}
+        </div>
+      </>}
 
       <section className="formula-row" aria-label="Formula bar">
         <div className="name-box">{selectedAddress}<ChevronDown size={14} /></div>
@@ -491,28 +559,52 @@ export default function App() {
       <main className="workspace">
         <div className="grid-viewport" id="spreadsheet-grid" ref={gridRef} role="grid" aria-label={`${activeSheet.name} spreadsheet`} tabIndex={0} onKeyDown={handleGridKeyDown} style={{ fontSize: `${zoom}%` }}>
           <div className="sheet-grid" style={{ gridTemplateColumns: `48px ${Array.from({ length: dimensions.cols }, (_, col) => `${activeSheet.columnWidths[col] || 112}px`).join(" ")}` }}>
-            <div className="corner-cell" aria-hidden="true" />
-            {Array.from({ length: dimensions.cols }, (_, col) => <div className="column-header" role="columnheader" key={`h-${col}`}>{columnName(col)}</div>)}
-            {Array.from({ length: dimensions.rows }, (_, row) => <div className="grid-row" role="row" key={`row-${row}`} style={{ display: "contents" }}>
-              <div className="row-header" role="rowheader">{row + 1}</div>
+            <div className="corner-cell" role="button" tabIndex={-1} aria-label="Select all cells" onMouseDown={selectAll} />
+            {Array.from({ length: dimensions.cols }, (_, col) => {
+              const frozen = col < (activeSheet.frozenColumns || 0);
+              return <div
+                className={`column-header ${col >= normalizedSelection(selection).start.col && col <= normalizedSelection(selection).end.col ? "header-selected" : ""} ${frozen ? "frozen" : ""}`}
+                role="columnheader" key={`h-${col}`}
+                style={frozen ? { left: colOffsets[col], zIndex: 25 } : undefined}
+                onMouseDown={(event) => selectColumn(col, event.shiftKey)}
+                onMouseEnter={() => { if (dragging && dragKind.current === "col") setSelection({ start: { row: 0, col: Math.min(headerAnchor.current, col) }, end: { row: dimensions.rows - 1, col: Math.max(headerAnchor.current, col) } }); }}
+              >{columnName(col)}</div>;
+            })}
+            {Array.from({ length: dimensions.rows }, (_, row) => {
+              const rowFrozen = row < (activeSheet.frozenRows || 0);
+              return <div className="grid-row" role="row" key={`row-${row}`} style={{ display: "contents" }}>
+              <div
+                className={`row-header ${row >= normalizedSelection(selection).start.row && row <= normalizedSelection(selection).end.row ? "header-selected" : ""} ${rowFrozen ? "frozen" : ""}`}
+                role="rowheader"
+                style={rowFrozen ? { top: 29 + row * 29, zIndex: 25 } : undefined}
+                onMouseDown={(event) => selectRow(row, event.shiftKey)}
+                onMouseEnter={() => { if (dragging && dragKind.current === "row") setSelection({ start: { row: Math.min(headerAnchor.current, row), col: 0 }, end: { row: Math.max(headerAnchor.current, row), col: dimensions.cols - 1 } }); }}
+              >{row + 1}</div>
               {Array.from({ length: dimensions.cols }, (_, col) => {
+                if (mergeMap.covered.has(`${row},${col}`)) return null;
+                const region = mergeMap.anchors.get(`${row},${col}`);
                 const address = addressOf(row, col); const cell = activeSheet.cells[address];
                 const n = normalizedSelection(selection); const selected = row >= n.start.row && row <= n.end.row && col >= n.start.col && col <= n.end.col;
                 const active = address === selectedAddress; const value = displayValue(evaluateCell(workbook, activeSheet, address), cell?.style);
                 const style = cell?.style;
+                const colFrozen = col < (activeSheet.frozenColumns || 0);
+                const frozenStyle: React.CSSProperties = {};
+                if (colFrozen) { frozenStyle.position = "sticky"; frozenStyle.left = colOffsets[col]; frozenStyle.zIndex = 11; }
+                if (rowFrozen) { frozenStyle.position = "sticky"; frozenStyle.top = 29 + row * 29; frozenStyle.zIndex = colFrozen ? 13 : 12; }
                 return <div
                   className={`grid-cell ${selected ? "selected" : ""} ${active ? "active" : ""} ${findMatches.has(address) ? "find-match" : ""}`}
                   role="gridcell" aria-selected={selected} aria-label={`${address}, ${value || "blank"}`} key={address}
-                  style={{ fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor, backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined }}
-                  onMouseDown={(event) => { setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
-                  onMouseEnter={() => { if (dragging) setSelection((current) => ({ ...current, end: { row, col } })); }}
+                  style={{ gridColumn: `${col + 2} / span ${region?.cols ?? 1}`, gridRow: `${row + 2} / span ${region?.rows ?? 1}`, fontWeight: style?.bold ? 700 : undefined, fontStyle: style?.italic ? "italic" : undefined, textDecoration: style?.underline ? "underline" : undefined, color: style?.textColor, backgroundColor: style?.fillColor, textAlign: style?.align, whiteSpace: style?.wrap ? "normal" : undefined, ...frozenStyle }}
+                  onMouseDown={(event) => { dragKind.current = "cell"; setDragging(true); const point = { row, col }; setSelection(event.shiftKey ? { ...selection, end: point } : { start: point, end: point }); gridRef.current?.focus(); }}
+                  onMouseEnter={() => { if (dragging && dragKind.current === "cell") setSelection((current) => ({ ...current, end: { row, col } })); }}
                   onDoubleClick={() => beginEdit(address)}
                   title={cell?.note || (typeof cell?.raw === "string" && cell.raw.startsWith("=") ? cell.raw : undefined)}
                 >
                   {editing?.address === address ? <CellEditor initialValue={editing.initialValue} onCommit={(nextValue) => commitEdit(address, nextValue)} onCancel={() => { setEditing(null); gridRef.current?.focus(); }} /> : <span>{value}</span>}
                 </div>;
               })}
-            </div>)}
+            </div>;
+            })}
           </div>
         </div>
 
