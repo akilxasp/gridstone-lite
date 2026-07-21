@@ -12,6 +12,9 @@ Gridstone is a local-first spreadsheet desktop application for macOS and Windows
 - Common formulas, arithmetic, comparisons, cell/range references, and circular-reference detection
 - Text, fill, emphasis, alignment, number, currency, and percentage formatting
 - Sort, duplicate removal, find, charts, notes, print/PDF, dark mode, zoom, frozen rows, and selection statistics
+- Row, column, and select-all header selection with click-drag ranges
+- Freeze top row and/or first column, and merge/unmerge cell ranges
+- Automatic in-app updates from GitHub Releases (download and install without re-downloading manually)
 - Local recovery copies, unsaved-change protection, and offline operation
 - Windows NSIS/portable and macOS DMG/ZIP packaging configuration
 
@@ -40,6 +43,24 @@ npm run dist:win
 `dist:mac:universal` creates one macOS installer for Apple Silicon (including M3 Pro) and Intel x64 Macs (including Intel i7) running macOS 11 or later. The local universal build uses an ad-hoc signature for internal testing. Public distribution still requires an Apple Developer ID signature and notarization.
 
 Windows artifacts should be produced on Windows or in a Windows CI runner. Public distribution also requires a Windows code-signing certificate.
+
+## Automatic updates
+
+The app checks GitHub Releases on launch (and from **File → Check for updates…** or the app/Help menu) and downloads new versions in the background using [`electron-updater`](https://www.electron.build/auto-update). When a build finishes downloading, an in-app banner offers **Restart & install**. Updates are wired to the release feed declared in `build.publish` in `package.json` (`akilxasp/gridstone-lite`).
+
+Publish a release that installed apps will pick up:
+
+```bash
+export GH_TOKEN=<a GitHub token with repo scope>
+npm run release
+```
+
+`npm run release` builds the renderer and runs `electron-builder --publish always`, which uploads the installers plus the `latest.yml` / `latest-mac.yml` update metadata (and `.blockmap` files for delta downloads) to a GitHub Release for the current `version` in `package.json`. Bump `version` before each release. Run it per target OS (macOS for `dmg`/`zip`, Windows for `nsis`) so every platform's metadata lands on the same release.
+
+Update mechanism per platform:
+
+- **Windows:** full silent auto-update via `electron-updater` (Squirrel). New versions download in the background; the in-app banner offers **Restart & install**. Unsigned installers work but show SmartScreen warnings, so a code-signing certificate is recommended. The `portable` target does not auto-update.
+- **macOS:** Squirrel.Mac requires a signed, notarized build, which needs a paid Apple Developer ID. To avoid that, macOS uses a **manual download-and-open** flow instead: the app queries the latest GitHub release, and if it's newer, the banner offers **Download update**. It downloads the matching `.dmg` to the Downloads folder and opens it; the user drags Gridstone into Applications and relaunches. No signing or Apple account required. If you later obtain a Developer ID, sign + notarize the build and switch macOS back to the Squirrel path in `electron/main.cjs` for fully silent updates.
 
 ## Excel compatibility boundary
 

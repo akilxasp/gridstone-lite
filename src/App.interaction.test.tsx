@@ -69,6 +69,28 @@ describe("Gridstone interactions", () => {
     expect(screen.getByLabelText("Sheet 2 spreadsheet")).toBeTruthy();
   }, 15_000);
 
+  it("selects an entire column from its header", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getAllByRole("columnheader").find((element) => element.textContent === "B")!);
+    await waitFor(() => expect(gridCell("B1").getAttribute("aria-selected")).toBe("true"));
+    expect(gridCell("B50").getAttribute("aria-selected")).toBe("true");
+    expect(gridCell("A1").getAttribute("aria-selected")).toBe("false");
+  }, 15_000);
+
+  it("merges a range and hides the covered cell", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(gridCell("A4"));
+    await user.keyboard("{Shift>}{ArrowRight}{/Shift}");
+    await user.click(screen.getByRole("button", { name: "Merge cells" }));
+
+    await waitFor(() => expect(document.querySelector('[role="gridcell"][aria-label^="B4,"]')).toBeNull());
+    expect(gridCell("A4").style.gridColumn).toContain("span 2");
+  }, 15_000);
+
   it("opens Find with the keyboard shortcut and reports matches", async () => {
     const user = userEvent.setup();
     render(<App />);

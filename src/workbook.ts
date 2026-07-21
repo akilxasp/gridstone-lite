@@ -28,6 +28,7 @@ export interface SheetData {
   hiddenRows: number[];
   frozenRows: number;
   frozenColumns: number;
+  merges: string[];
 }
 
 export interface WorkbookData {
@@ -52,7 +53,7 @@ export function uid(prefix = "id") {
 export function createSheet(name = "Sheet 1"): SheetData {
   return {
     id: uid("sheet"), name, cells: {}, columnWidths: {}, hiddenColumns: [], hiddenRows: [],
-    frozenRows: 0, frozenColumns: 0,
+    frozenRows: 0, frozenColumns: 0, merges: [],
   };
 }
 
@@ -96,6 +97,33 @@ export function selectionAddresses(selection: Selection): string[] {
   for (let row = n.start.row; row <= n.end.row; row++)
     for (let col = n.start.col; col <= n.end.col; col++) result.push(addressOf(row, col));
   return result;
+}
+
+export interface MergeRegion { anchor: CellPoint; rows: number; cols: number }
+
+export function mergeRegionOf(range: string): MergeRegion | null {
+  const parts = range.split(":");
+  const start = pointFromAddress(parts[0]);
+  const end = pointFromAddress(parts[1] ?? parts[0]);
+  if (!start || !end) return null;
+  const anchor = { row: Math.min(start.row, end.row), col: Math.min(start.col, end.col) };
+  return { anchor, rows: Math.abs(end.row - start.row) + 1, cols: Math.abs(end.col - start.col) + 1 };
+}
+
+export function rangeString(selection: Selection): string {
+  const n = normalizedSelection(selection);
+  return `${addressOf(n.start.row, n.start.col)}:${addressOf(n.end.row, n.end.col)}`;
+}
+
+function regionsOverlap(a: MergeRegion, b: MergeRegion): boolean {
+  return a.anchor.row <= b.anchor.row + b.rows - 1 && b.anchor.row <= a.anchor.row + a.rows - 1
+    && a.anchor.col <= b.anchor.col + b.cols - 1 && b.anchor.col <= a.anchor.col + a.cols - 1;
+}
+
+export function mergesOverlapping(merges: string[], selection: Selection): string[] {
+  const target = mergeRegionOf(rangeString(selection));
+  if (!target) return [];
+  return merges.filter((range) => { const region = mergeRegionOf(range); return region ? regionsOverlap(region, target) : false; });
 }
 
 function parseLiteral(value: string): CellValue {
@@ -256,6 +284,7 @@ export function importWorkbook(data: Uint8Array, name: string): WorkbookData {
       }};
     }
     if (ws["!cols"]) ws["!cols"].forEach((column, index) => { if (column?.wch) sheet.columnWidths[index] = Math.max(64, column.wch * 8); });
+    if (ws["!merges"]) sheet.merges = ws["!merges"].map((m) => `${addressOf(m.s.r, m.s.c)}:${addressOf(m.e.r, m.e.c)}`);
     return sheet;
   });
   const first = sheets[0] || createSheet();
@@ -282,6 +311,7 @@ export function exportWorkbook(workbook: WorkbookData, extension: string): Uint8
     }
     ws["!ref"] = `A1:${addressOf(maxRow, maxCol)}`;
     ws["!cols"] = Array.from({ length: maxCol + 1 }, (_, index) => ({ wch: (sheet.columnWidths[index] || 112) / 8 }));
+    if (sheet.merges?.length) ws["!merges"] = sheet.merges.map((range) => { const region = mergeRegionOf(range)!; return { s: { r: region.anchor.row, c: region.anchor.col }, e: { r: region.anchor.row + region.rows - 1, c: region.anchor.col + region.cols - 1 } }; }).filter(Boolean);
     XLSX.utils.book_append_sheet(output, ws, sheet.name.slice(0, 31));
   }
   if (extension === "csv") {
