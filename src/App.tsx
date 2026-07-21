@@ -564,15 +564,17 @@ export default function App() {
 
       {findOpen && <div className="find-bar" role="search"><Search size={17} /><input autoFocus placeholder="Find in sheet" value={findQuery} onChange={(event) => setFindQuery(event.target.value)} /><span>{findMatches.size} result{findMatches.size === 1 ? "" : "s"}</span><button aria-label="Close find" onClick={() => setFindOpen(false)}><X size={17} /></button></div>}
 
-      {update && ["checking", "available", "downloading", "downloaded", "error"].includes(update.state) && <div className={`update-bar update-${update.state}`} role="status">
-        {update.state === "downloaded" ? <Download size={16} /> : update.state === "error" ? <X size={16} /> : <RefreshCw size={16} className={update.state === "checking" || update.state === "downloading" ? "spin" : ""} />}
+      {update && ["checking", "available", "downloading", "downloaded", "ready-manual", "error"].includes(update.state) && <div className={`update-bar update-${update.state}`} role="status">
+        {update.state === "downloaded" || update.state === "ready-manual" ? <Download size={16} /> : update.state === "error" ? <X size={16} /> : <RefreshCw size={16} className={update.state === "checking" || update.state === "downloading" ? "spin" : ""} />}
         <span>
           {update.state === "checking" && "Checking for updates…"}
-          {update.state === "available" && `Update ${update.version ?? ""} available — downloading…`}
+          {update.state === "available" && (update.manual ? `Update ${update.version ?? ""} available` : `Update ${update.version ?? ""} available — downloading…`)}
           {update.state === "downloading" && `Downloading update… ${update.percent ?? 0}%`}
           {update.state === "downloaded" && `Update ${update.version ?? ""} ready to install`}
+          {update.state === "ready-manual" && "Installer opened — drag Gridstone into Applications, then relaunch."}
           {update.state === "error" && `Update check failed: ${update.message ?? "unknown error"}`}
         </span>
+        {update.state === "available" && update.manual && <button className="update-install" onClick={() => void window.desktop?.downloadUpdate()}>Download update</button>}
         {update.state === "downloaded" && <button className="update-install" onClick={() => void window.desktop?.installUpdate()}>Restart & install</button>}
         <button className="update-dismiss" aria-label="Dismiss update notice" onClick={() => setUpdate(null)}><X size={15} /></button>
       </div>}

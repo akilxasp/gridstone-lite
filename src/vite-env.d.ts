@@ -15,10 +15,11 @@ interface Window {
     saveFile(request: { path?: string; saveAs?: boolean; extension: string; suggestedName: string; data: Uint8Array }): Promise<{ path: string; name: string; extension: string } | null>;
     print(): Promise<{ success: boolean; failureReason?: string }>;
     checkForUpdates(): Promise<void>;
+    downloadUpdate(): Promise<void>;
     installUpdate(): Promise<void>;
     onCommand(callback: (command: string, payload?: unknown) => void): () => void;
   };
 }
 
-type UpdateState = "checking" | "available" | "downloading" | "downloaded" | "none" | "error" | "dev";
-interface UpdateStatus { state: UpdateState; version?: string; percent?: number; message?: string }
+type UpdateState = "checking" | "available" | "downloading" | "downloaded" | "ready-manual" | "none" | "error" | "dev";
+interface UpdateStatus { state: UpdateState; version?: string; percent?: number; message?: string; manual?: boolean; path?: string }

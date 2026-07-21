@@ -57,10 +57,10 @@ npm run release
 
 `npm run release` builds the renderer and runs `electron-builder --publish always`, which uploads the installers plus the `latest.yml` / `latest-mac.yml` update metadata (and `.blockmap` files for delta downloads) to a GitHub Release for the current `version` in `package.json`. Bump `version` before each release. Run it per target OS (macOS for `dmg`/`zip`, Windows for `nsis`) so every platform's metadata lands on the same release.
 
-Signing requirements for auto-update:
+Update mechanism per platform:
 
-- **macOS:** Squirrel.Mac only installs updates from a signed, notarized build, and updates are delivered via the `zip` target (already configured). The ad-hoc signature used for local universal builds cannot auto-update — a real Developer ID signature and notarization are required for the feature to work for end users.
-- **Windows:** NSIS builds auto-update unsigned, but an unsigned installer shows SmartScreen warnings; a code-signing certificate is recommended. The `portable` target does not auto-update.
+- **Windows:** full silent auto-update via `electron-updater` (Squirrel). New versions download in the background; the in-app banner offers **Restart & install**. Unsigned installers work but show SmartScreen warnings, so a code-signing certificate is recommended. The `portable` target does not auto-update.
+- **macOS:** Squirrel.Mac requires a signed, notarized build, which needs a paid Apple Developer ID. To avoid that, macOS uses a **manual download-and-open** flow instead: the app queries the latest GitHub release, and if it's newer, the banner offers **Download update**. It downloads the matching `.dmg` to the Downloads folder and opens it; the user drags Gridstone into Applications and relaunches. No signing or Apple account required. If you later obtain a Developer ID, sign + notarize the build and switch macOS back to the Squirrel path in `electron/main.cjs` for fully silent updates.
 
 ## Excel compatibility boundary
 
