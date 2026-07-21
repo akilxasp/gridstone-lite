@@ -18,29 +18,6 @@ A local-first spreadsheet desktop application for macOS and Windows, built with 
 - Local recovery copies, unsaved-change protection, and offline operation
 - Windows NSIS/portable and macOS DMG/ZIP packaging
 
-## Development
-
-```bash
-npm install
-npm run dev
-```
-
-Run tests and build:
-
-```bash
-npm test
-npm run build
-```
-
-## Installers
-
-```bash
-npm run dist:mac            # Apple Silicon DMG
-npm run dist:mac:x64        # Intel x64 DMG
-npm run dist:mac:universal  # Universal DMG
-npm run dist:win            # Windows NSIS/portable
-```
-
 The universal build supports Apple Silicon and Intel x64 Macs on macOS 11 or later, using an ad-hoc signature for internal testing. Public distribution requires an Apple Developer ID signature and notarization.
 
 Build Windows artifacts on Windows or a Windows CI runner. Public distribution requires a Windows code-signing certificate.
