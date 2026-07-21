@@ -14,9 +14,11 @@
     "dist:mac": "npm run build && electron-builder --mac --arm64",
     "dist:mac:x64": "npm run build && electron-builder --mac --x64",
     "dist:mac:universal": "npm run build && electron-builder --mac --universal",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "release": "npm run build && electron-builder --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -40,6 +42,13 @@
   "build": {
     "appId": "com.gridstone.spreadsheet",
     "productName": "Gridstone",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "akilxasp",
+        "repo": "gridstone-lite"
+      }
+    ],
     "asar": true,
     "afterPack": "build/after-pack.cjs",
     "files": [

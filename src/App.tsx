@@ -3,7 +3,7 @@ import {
   AlignCenter, AlignLeft, AlignRight, ArrowDownWideNarrow, ArrowUpNarrowWide,
   BarChart3, Bold, Check, ChevronDown, Columns, Combine, Copy, DollarSign, Download, FilePlus2,
   FolderOpen, Italic, Moon, PaintBucket, PanelRight, Percent, Plus, Printer,
-  Redo2, Save, Scissors, Search, Snowflake, Sun, Trash2, Underline, Undo2, X,
+  Redo2, RefreshCw, Save, Scissors, Search, Snowflake, Sun, Trash2, Underline, Undo2, X,
 } from "lucide-react";
 import {
   CellData, CellStyle, DEFAULT_COLS, DEFAULT_ROWS, MergeRegion, Selection, SheetData, WorkbookData,
@@ -116,6 +116,7 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [fileMenuPos, setFileMenuPos] = useState({ top: 0, left: 0 });
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [zoom, setZoom] = useState(100);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileBtnRef = useRef<HTMLButtonElement>(null);
@@ -422,6 +423,12 @@ export default function App() {
       if (command === "new") newWorkbook(); else if (command === "open") void openFile(); else if (command === "save") void saveFile();
       else if (command === "save-as") void saveFile(true); else if (command === "print") void printWorkbook(); else if (command === "find") setFindOpen(true);
       else if (command === "open-path" && typeof payload === "string") void window.desktop?.readPath(payload).then(loadDesktopFile).catch(() => setStatus("Could not open the selected workbook"));
+      else if (command === "update-status") {
+        const status = payload as UpdateStatus;
+        setUpdate(status);
+        if (status.state === "none") setStatus("You're on the latest version");
+        else if (status.state === "dev") setStatus("Updates are only available in the installed app");
+      }
     });
   }, [newWorkbook, openFile, saveFile, printWorkbook, loadDesktopFile]);
 
@@ -543,6 +550,7 @@ export default function App() {
           <button role="menuitem" onClick={() => void saveFile(true)}><Download />Save as…<span>⇧⌘S</span></button>
           <button role="menuitem" onClick={() => void saveFile(true, "csv")}><Download />Export CSV</button>
           <button role="menuitem" onClick={() => void printWorkbook()}><Printer />Print / PDF<span>⌘P</span></button>
+          {window.desktop && <button role="menuitem" onClick={() => { setShowFileMenu(false); void window.desktop?.checkForUpdates(); }}><RefreshCw />Check for updates…</button>}
           {recentFiles.length > 0 && <div className="menu-heading">Recent files</div>}
           {recentFiles.map((item) => <button role="menuitem" key={item.path} onClick={() => void openRecent(item)}><span className="file-badge">{item.extension}</span>{item.name}</button>)}
         </div>
@@ -555,6 +563,19 @@ export default function App() {
       </section>
 
       {findOpen && <div className="find-bar" role="search"><Search size={17} /><input autoFocus placeholder="Find in sheet" value={findQuery} onChange={(event) => setFindQuery(event.target.value)} /><span>{findMatches.size} result{findMatches.size === 1 ? "" : "s"}</span><button aria-label="Close find" onClick={() => setFindOpen(false)}><X size={17} /></button></div>}
+
+      {update && ["checking", "available", "downloading", "downloaded", "error"].includes(update.state) && <div className={`update-bar update-${update.state}`} role="status">
+        {update.state === "downloaded" ? <Download size={16} /> : update.state === "error" ? <X size={16} /> : <RefreshCw size={16} className={update.state === "checking" || update.state === "downloading" ? "spin" : ""} />}
+        <span>
+          {update.state === "checking" && "Checking for updates…"}
+          {update.state === "available" && `Update ${update.version ?? ""} available — downloading…`}
+          {update.state === "downloading" && `Downloading update… ${update.percent ?? 0}%`}
+          {update.state === "downloaded" && `Update ${update.version ?? ""} ready to install`}
+          {update.state === "error" && `Update check failed: ${update.message ?? "unknown error"}`}
+        </span>
+        {update.state === "downloaded" && <button className="update-install" onClick={() => void window.desktop?.installUpdate()}>Restart & install</button>}
+        <button className="update-dismiss" aria-label="Dismiss update notice" onClick={() => setUpdate(null)}><X size={15} /></button>
+      </div>}
 
       <main className="workspace">
         <div className="grid-viewport" id="spreadsheet-grid" ref={gridRef} role="grid" aria-label={`${activeSheet.name} spreadsheet`} tabIndex={0} onKeyDown={handleGridKeyDown} style={{ fontSize: `${zoom}%` }}>
